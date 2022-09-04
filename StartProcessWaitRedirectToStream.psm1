@@ -3,7 +3,7 @@
 #   https://stackoverflow.com/a/11549817/9156059
 
 
-Import-Module -Force "$pwd\StringEncrypt\StringEncrypt.psm1"
+Import-Module -Force "$PSScriptRoot\StringEncrypt\StringEncrypt.psm1"
 
 
 function Invoke-StartProcessWaitRedirectToStream {
