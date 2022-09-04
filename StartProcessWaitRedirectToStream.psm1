@@ -1,4 +1,6 @@
-
+# alternatives:
+#   https://stackoverflow.com/a/8762068/9156059
+#   https://stackoverflow.com/a/11549817/9156059
 
 function Invoke-StartProcessWaitRedirectToStream {
     Param (
