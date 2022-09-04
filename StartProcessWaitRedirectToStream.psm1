@@ -33,8 +33,14 @@ function Invoke-StartProcessWaitRedirectToStream {
         4 { $stderrOutputStream = 'Write-Verbose' }
         5 { $stderrOutputStream = 'Write-Information' }
     }
-    $TempFileOutput = New-TemporaryFile
-    $TempFileError = New-TemporaryFile
+    try {
+        $TempFileOutput = New-TemporaryFile
+        $TempFileError = New-TemporaryFile
+    }
+    catch { # bugfix for https://github.com/PowerShell/PowerShell/issues/14100
+        $TempFileOutput = Get-Item ([System.IO.Path]::GetTempFilename())
+        $TempFileError = Get-Item ([System.IO.Path]::GetTempFilename())
+    }
 
     # get encryption key
     $TempFilesEncryptionKey = Get-AesEncryptionKey -bytes 16
