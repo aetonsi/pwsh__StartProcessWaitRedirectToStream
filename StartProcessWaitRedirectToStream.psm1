@@ -3,51 +3,49 @@
 #   https://stackoverflow.com/a/11549817/9156059
 
 
-Import-Module -Force "$PSScriptRoot\StringEncrypt\StringEncrypt.psm1"
-
-
 function Invoke-StartProcessWaitRedirectToStream {
+    [CmdletBinding(DefaultParameterSetName = '__AllParameterSets')]
     Param (
-        [Parameter(Mandatory = $true)] [string] $FilePath,
-        [Parameter(Mandatory = $false)] [string[]] $ArgumentList = @(),
-        [Parameter(Mandatory = $false)] [System.Diagnostics.ProcessWindowStyle] $WindowStyle = 0,
-        [Parameter(Mandatory = $false)] [AllowNull()] [Nullable[System.Int32]] $RedirectStandardOutputToStream = $null,
-        [Parameter(Mandatory = $false)] [AllowNull()] [Nullable[System.Int32]] $RedirectStandardErrorToStream = $null,
-        [Parameter(Mandatory = $false)] [switch] $vvv = $false
+        [string] $FilePath,
+        [string[]] $ArgumentList = @(),
+        [Parameter(ParameterSetName = 'winstyle')][System.Diagnostics.ProcessWindowStyle] $WindowStyle = 0,
+        [Parameter(ParameterSetName = 'nonewwindow')][switch] $NoNewWindow,
+        [AllowNull()] [Nullable[System.Int32]] $RedirectStandardOutputToStream = $null,
+        [AllowNull()] [Nullable[System.Int32]] $RedirectStandardErrorToStream = $null,
+        [switch] $VVV
     )
 
     # parse args
     switch ($RedirectStandardOutputToStream) {
-        $null { $stdoutOutputStream = 'Out-Null' }
+        { $_ -eq $null -or $_ -eq 0 } { $stdoutOutputStream = 'Out-Null' }
         1 { $stdoutOutputStream = 'Write-Output' }
         2 { $stdoutOutputStream = 'Write-Error' }
         3 { $stdoutOutputStream = 'Write-Warning' }
         4 { $stdoutOutputStream = 'Write-Verbose' }
         5 { $stdoutOutputStream = 'Write-Information' }
+        default { $stderrOutputStream = 'Out-Null' }
     }
     switch ($RedirectStandardErrorToStream) {
-        $null { $stderrOutputStream = 'Out-Null' }
+        { $_ -eq $null -or $_ -eq 0 } { $stderrOutputStream = 'Out-Null' }
         1 { $stderrOutputStream = 'Write-Output' }
         2 { $stderrOutputStream = 'Write-Error' }
         3 { $stderrOutputStream = 'Write-Warning' }
         4 { $stderrOutputStream = 'Write-Verbose' }
         5 { $stderrOutputStream = 'Write-Information' }
+        default { $stderrOutputStream = 'Out-Null' }
     }
     try {
         $TempFileOutput = New-TemporaryFile
         $TempFileError = New-TemporaryFile
-    }
-    catch { # bugfix for https://github.com/PowerShell/PowerShell/issues/14100
+    } catch {
+        # fix for https://github.com/PowerShell/PowerShell/issues/14100
         $TempFileOutput = Get-Item ([System.IO.Path]::GetTempFilename())
         $TempFileError = Get-Item ([System.IO.Path]::GetTempFilename())
     }
 
-    # get encryption key
-    $TempFilesEncryptionKey = Get-AesEncryptionKey -bytes 16
-
-    # verbose info
-    $vvv = $vvv -or $PSCmdlet.MyInvocation.BoundParameters["Verbose"].IsPresent;
-    if ($vvv) {
+    $v = $VVV -or ($MyInvocation.BoundParameters -and
+        $MyInvocation.BoundParameters['Verbose'] -and $MyInvocation.BoundParameters['Verbose'].IsPresent)
+    if ($v) {
         Write-Output "RedirectStandardOutputToStream=$RedirectStandardOutputToStream"
         Write-Output "RedirectStandardErrorToStream=$RedirectStandardErrorToStream"
         Write-Output "stdoutOutputStream=$stdoutOutputStream"
@@ -59,20 +57,20 @@ function Invoke-StartProcessWaitRedirectToStream {
 
     # main call
     # TODO use $PSBoundParameters or similar to splat any parameter given
-    Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WindowStyle $WindowStyle -Wait -RedirectStandardOutput $TempFileOutput -RedirectStandardError $TempFileError
+    # TODO run async?
+    $win = if ($NoNewWindow) { @{NoNewWindow = $true } } else { @{WindowStyle = $WindowStyle } }
+    Start-Process -FilePath $FilePath -ArgumentList $ArgumentList `
+        -Wait @win `
+        -RedirectStandardOutput $TempFileOutput `
+        -RedirectStandardError $TempFileError
 
-    # encrypt temp output files for added safety
-    Get-Content $TempFileOutput | ConvertTo-EncryptedString -EncryptionKey $TempFilesEncryptionKey | Set-Content $TempFileOutput
-    Get-Content $TempFileError | ConvertTo-EncryptedString -EncryptionKey $TempFilesEncryptionKey | Set-Content $TempFileError
-
-    # output as requested
-    Get-Content $TempFileOutput | ConvertFrom-EncryptedString -EncryptionKey $TempFilesEncryptionKey | & $stdoutOutputStream
-    Get-Content $TempFileError | ConvertFrom-EncryptedString -EncryptionKey $TempFilesEncryptionKey | & $stderrOutputStream
+    # output
+    Get-Content $TempFileOutput | & $stdoutOutputStream
+    Get-Content $TempFileError | & $stderrOutputStream
 
     # cleanup
     Remove-Item $TempFileOutput -Force
     Remove-Item $TempFileError -Force
-    Remove-Variable TempFilesEncryptionKey -Force
 }
 
 
